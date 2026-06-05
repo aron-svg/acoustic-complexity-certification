@@ -1,35 +1,93 @@
+import os
 import numpy as np
 import scipy.io.wavfile as wav
-import mosqito
+from mosqito.sq_metrics import loudness_zwtv, sharpness_din_tv, roughness_dw
 
-# 1. CHARGER LE FICHIER AUDIO
-# Attention : la plupart des normes psychoacoustiques exigent une fréquence de 48 kHz
-fs, signal = wav.read("test1.wav")
+# =============================================================================
+# CONFIGURATION
+# =============================================================================
+# Nom du dossier contenant vos fichiers audio
+TARGET_DIR = "B"
 
-# 2. CALCULER LES BRICKS DE BASE (Exemple avec MOSQITO)
-# Calcul de la Sonie (Loudness) selon la norme ISO 532-1 (Zwicker)
-# 'field_type' précise si on est au casque (free) ou en pièce (diffuse)
-loudness_dict = mosqito.compute_loudness_zwicker_time(signal, fs, field_type="free")
-N_5 = loudness_dict["values"][-1] # On extrait le percentile de pointe N5
+# Liste pour stocker tous les indices d'agacement calculés
+all_pa_scores = []
 
-# Calcul de la Netteté (Sharpness) selon la norme DIN 45692
-sharpness_dict = mosqito.compute_sharpness_din(signal, fs_dict=fs)
-S = np.mean(sharpness_dict["values"]) # Valeur moyenne de la netteté
+# Vérification de l'existence du dossier
+if not os.path.exists(TARGET_DIR):
+    print(f"Erreur : Le dossier '{TARGET_DIR}' n'existe pas.")
+    exit()
 
-# Calcul de la Rugosité (Roughness)
-roughness_dict = mosqito.compute_roughness_dw(signal, fs)
-R = np.mean(roughness_dict["values"])
+# Récupération de tous les fichiers .wav du dossier
+audio_files = [f for f in os.listdir(TARGET_DIR) if f.lower().endswith('.wav')]
 
-# 3. CALCULER L'INDICE D'AGACEMENT (Formule de Zwicker & Fastl)
-# On applique les coefficients multiplicateurs liés à la perception humaine
-if S > 1.75:
-    w_S = (S - 1.75) * np.log(N_5 + 2)
+if not audio_files:
+    print(f"Aucun fichier .wav trouvé dans le dossier '{TARGET_DIR}'.")
+    exit()
+
+print(f"Début de l'analyse globale : {len(audio_files)} fichier(s) trouvé(s).\n")
+print("-" * 50)
+
+# =============================================================================
+# BOUCLE D'ANALYSE FICHIER PAR FICHIER
+# =============================================================================
+for filename in audio_files:
+    file_path = os.path.join(TARGET_DIR, filename)
+    print(f"Analyse de : {filename} ...")
+    
+    try:
+        # 1. Chargement et préparation du signal
+        fs, signal = wav.read(file_path)
+        
+        if signal.ndim == 2:
+            signal = signal.mean(axis=1)  # Conversion Mono
+            
+        signal = signal.astype(np.float32) / np.iinfo(np.int16).max
+        
+        # 2. Calcul des métriques psychoacoustiques
+        N, _, _, _ = loudness_zwtv(signal, fs, field_type="free")
+        N_5 = np.percentile(N, 95)
+        
+        S, _ = sharpness_din_tv(signal, fs, skip=0.2)
+        S = np.mean(S)
+        
+        R, _, _, _ = roughness_dw(signal, fs)
+        R = np.mean(R)
+        
+        # 3. Calcul de l'indice d'agacement (PA)
+        w_S = (S - 1.75) * np.log(N_5 + 2) if S > 1.75 else 0
+        w_FR = np.sqrt((0.3 * R) ** 2)
+        
+        psychoacoustic_annoyance = N_5 * (1 + np.sqrt(w_S**2 + w_FR**2))
+        
+        # Enregistrement du score
+        all_pa_scores.append(psychoacoustic_annoyance)
+        print(f"   -> Score PA : {psychoacoustic_annoyance:.2f}")
+        
+    except Exception as e:
+        print(f"   ❌ Erreur lors du traitement de {filename} : {e}")
+
+# =============================================================================
+# CALCUL DE LA MOYENNE FINALE
+# =============================================================================
+print("-" * 50)
+if all_pa_scores:
+    average_annoyance = np.mean(all_pa_scores)
+    print("\n" + "="*45)
+    print("           RÉSULTATS DE L'ANALYSE GLOBAL      ")
+    print("="*45)
+    print(f"Fichiers analysés avec succès : {len(all_pa_scores)}/{len(audio_files)}")
+    print(f"INDICE D'AGACEMENT MOYEN (PA) : {average_annoyance:.2f}")
+    print("="*45)
+    
+    # Petite aide à l'interprétation rapide de la moyenne
+    if average_annoyance < 4:
+        print("Interprétation globale : Environnement très calme / Négligeable.")
+    elif average_annoyance < 12:
+        print("Interprétation globale : Nuisance faible / Tolérable.")
+    elif average_annoyance < 25:
+        print("Interprétation globale : Nuisance modérée à significative (Fatiguant).")
+    else:
+        print("Interprétation globale : Environnement très agaçant / Critique.")
+    print("="*45)
 else:
-    w_S = 0
-
-w_FR = np.sqrt((0.3 * R)**2 + (0.05 * 0)**2) # (0 ici correspond à la Fluctuation au repos)
-
-# Score final d'agacement psychoacoustique
-psychoacoustic_annoyance = N_5 * (1 + np.sqrt(w_S**2 + w_FR**2))
-
-print(f"Indice de perturbation globale : {psychoacoustic_annoyance:.2f}")
+    print("\nAucun fichier n'a pu être analysé avec succès.")
