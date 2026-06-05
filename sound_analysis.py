@@ -1,35 +1,31 @@
 import numpy as np
 import scipy.io.wavfile as wav
-import mosqito
+from mosqito.sq_metrics import loudness_zwtv, sharpness_din_tv, roughness_dw
 
-# 1. CHARGER LE FICHIER AUDIO
-# Attention : la plupart des normes psychoacoustiques exigent une fréquence de 48 kHz
+# 1. CHARGER ET PRÉPARER LE SIGNAL
 fs, signal = wav.read("test1.wav")
 
-# 2. CALCULER LES BRICKS DE BASE (Exemple avec MOSQITO)
-# Calcul de la Sonie (Loudness) selon la norme ISO 532-1 (Zwicker)
-# 'field_type' précise si on est au casque (free) ou en pièce (diffuse)
-loudness_dict = mosqito.compute_loudness_zwicker_time(signal, fs, field_type="free")
-N_5 = loudness_dict["values"][-1] # On extrait le percentile de pointe N5
+if signal.ndim == 2:
+    signal = signal.mean(axis=1)
+signal = signal.astype(np.float32) / np.iinfo(np.int16).max
 
-# Calcul de la Netteté (Sharpness) selon la norme DIN 45692
-sharpness_dict = mosqito.compute_sharpness_din(signal, fs_dict=fs)
-S = np.mean(sharpness_dict["values"]) # Valeur moyenne de la netteté
+# 2. MÉTRIQUES PSYCHOACOUSTIQUES
+N, N_spec, bark_axis, time_axis = loudness_zwtv(signal, fs, field_type="free")
+N_5 = np.percentile(N, 95)
 
-# Calcul de la Rugosité (Roughness)
-roughness_dict = mosqito.compute_roughness_dw(signal, fs)
-R = np.mean(roughness_dict["values"])
+S, _, _, _ = sharpness_din_tv(signal, fs)  # ✅ Corrigé
+S = np.mean(S)
 
-# 3. CALCULER L'INDICE D'AGACEMENT (Formule de Zwicker & Fastl)
-# On applique les coefficients multiplicateurs liés à la perception humaine
-if S > 1.75:
-    w_S = (S - 1.75) * np.log(N_5 + 2)
-else:
-    w_S = 0
+R, _, _, _ = roughness_dw(signal, fs)
+R = np.mean(R)
 
-w_FR = np.sqrt((0.3 * R)**2 + (0.05 * 0)**2) # (0 ici correspond à la Fluctuation au repos)
+# 3. INDICE D'AGACEMENT (Zwicker & Fastl)
+w_S = (S - 1.75) * np.log(N_5 + 2) if S > 1.75 else 0
+w_FR = np.sqrt((0.3 * R) ** 2)
 
-# Score final d'agacement psychoacoustique
 psychoacoustic_annoyance = N_5 * (1 + np.sqrt(w_S**2 + w_FR**2))
 
-print(f"Indice de perturbation globale : {psychoacoustic_annoyance:.2f}")
+print(f"Sonie N5          : {N_5:.2f} sone")
+print(f"Netteté S         : {S:.2f} acum")
+print(f"Rugosité R        : {R:.2f} asper")
+print(f"Indice d'agacement: {psychoacoustic_annoyance:.2f}")
