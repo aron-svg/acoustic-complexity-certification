@@ -1,20 +1,21 @@
 #!/usr/bin/env python
 import os
 from datetime import datetime
-from weasyprint import HTML
+from xhtml2pdf import pisa
 from logger_init import logger
 
 def generate_acoustic_report(all_folders_data, global_average, base_resources_dir, output_dir="./data/analysis"):
     """
-    Generates a high-fidelity corporate multi-folder certification PDF report.
+    Generates a corporate multi-folder certification PDF report using xhtml2pdf.
     Presents each folder's samples in distinct tables and concludes with a global directory summary.
+    Optimized to bypass xhtml2pdf @page nesting limitations.
     
     :param all_folders_data: Dict of folder names mapping to a dict with 'files' list and 'average_pa' float.
     :param global_average: Float representing the combined average across all directories.
     :param base_resources_dir: Path of the root ressources directory.
     :param output_dir: Destination path where the PDF will be saved.
     """
-    logger.info("Initializing high-fidelity multi-folder PDF report generation...")
+    logger.info("Initializing native xhtml2pdf multi-folder PDF report generation...")
     
     if not all_folders_data:
         logger.warning("No multi-folder data discovered. Aborting layout construction.")
@@ -23,17 +24,13 @@ def generate_acoustic_report(all_folders_data, global_average, base_resources_di
     # Determine global status categorization based on global average
     if global_average < 12:
         interpretation = "Low Nuisance / Tolerable"
-        badge_class = "badge-quiet"
+        badge_style = "background-color: #def7ec; color: #03543f;"
     elif global_average < 25:
         interpretation = "Moderate to Significant"
-        badge_class = "badge-warning"
+        badge_style = "background-color: #fde8e8; color: #9b1c1c;"
     else:
         interpretation = "High to Critical Nuisance"
-        badge_class = "badge-critical"
-
-    # Logo resolution
-    logo_path = os.path.abspath("data/logo/origenes.png")
-    logo_img_tag = f'<img src="file://{logo_path}" class="logo-image" alt="Origenes Logo">' if os.path.exists(logo_path) else '<span class="logo-text">@origenes</span>'
+        badge_style = "background-color: #fde8e8; color: #9b1c1c;"
 
     try:
         # 1. Build distinct HTML sections for EACH folder dynamically
@@ -46,28 +43,28 @@ def generate_acoustic_report(all_folders_data, global_average, base_resources_di
                 table_rows_html += f"""
                 <tr>
                     <td>{row['filename']}</td>
-                    <td class="text-right font-numeric">{row['loudness']:.2f}</td>
-                    <td class="text-right font-numeric">{row['sharpness']:.2f}</td>
-                    <td class="text-right font-numeric">{row['roughness']:.2f}</td>
-                    <td class="text-right font-numeric highlighted-cell">{row['annoyance']:.2f}</td>
+                    <td class="text-right">{row['loudness']:.2f}</td>
+                    <td class="text-right">{row['sharpness']:.2f}</td>
+                    <td class="text-right">{row['roughness']:.2f}</td>
+                    <td class="text-right highlighted-cell">{row['annoyance']:.2f}</td>
                 </tr>
                 """
             
             # Append the completed table structure for this specific folder
             folder_sections_html += f"""
             <div class="folder-section">
-                <h2>Experimental Data Log — Category {folder_name}</h2>
+                <h2>Experimental Data Log &mdash; Category {folder_name}</h2>
                 <div class="folder-meta">
                     <strong>Category Mean Score (PA):</strong> <span style="color: #2b3e50; font-weight: bold;">{data['average_pa']:.2f}</span>
                 </div>
                 <table class="results-table">
                     <thead>
                         <tr>
-                            <th style="width: 36%;">Sample ID</th>
-                            <th class="text-right" style="width: 16%;">Loudness<br><small>(sone)</small></th>
-                            <th class="text-right" style="width: 16%;">Sharpness<br><small>(acum)</small></th>
-                            <th class="text-right" style="width: 16%;">Roughness<br><small>(asper)</small></th>
-                            <th class="text-right">Annoyance Score<br><small>(PA)</small></th>
+                            <th style="width: 40%;">Sample ID</th>
+                            <th class="text-right" style="width: 15%;">Loudness (sone)</th>
+                            <th class="text-right" style="width: 15%;">Sharpness (acum)</th>
+                            <th class="text-right" style="width: 15%;">Roughness (asper)</th>
+                            <th class="text-right">Annoyance (PA)</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -75,22 +72,22 @@ def generate_acoustic_report(all_folders_data, global_average, base_resources_di
                     </tbody>
                 </table>
             </div>
+            <div class="page-break"></div>
             """
 
         # 2. Build the final GENERAL Summary Array rows
         general_summary_rows_html = ""
         for folder_name, data in all_folders_data.items():
-            # Apply dynamic text colors depending on row metrics
             row_color_style = "color: #03543f; font-weight: bold;" if data['average_pa'] < 12 else "color: #9b1c1c; font-weight: bold;"
             general_summary_rows_html += f"""
             <tr>
                 <td style="font-weight: bold;">Category {folder_name}</td>
                 <td class="text-center">{len(data['files'])} files</td>
-                <td class="text-right font-numeric" style="{row_color_style}">{data['average_pa']:.2f}</td>
+                <td class="text-right" style="{row_color_style}">{data['average_pa']:.2f}</td>
             </tr>
             """
 
-        # 3. Complete core printable HTML document with corporate CSS layout definitions
+        # 3. Complete core printable HTML document with compatible CSS definitions
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -99,232 +96,177 @@ def generate_acoustic_report(all_folders_data, global_average, base_resources_di
             <title>Multi-Category Acoustic Certification Report</title>
             <style>
                 @page {{
-                    size: A4;
-                    margin: 18mm 15mm;
-                    @bottom-right {{
-                        content: "Page " counter(page) " of " counter(pages);
-                        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-                        font-size: 8.5pt;
-                        color: #718096;
-                    }}
-                    @bottom-left {{
-                        content: "MULTI-CATEGORY QUALITY CERTIFICATION | METHODOLOGY: PA MODEL (ZWICKER & FASTL)";
-                        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-                        font-size: 8.5pt;
-                        letter-spacing: 0.5px;
-                        color: #718096;
-                    }}
+                    size: a4;
+                    margin: 20mm 15mm 20mm 15mm;
                 }}
                 
                 body {{
-                    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                    font-family: Helvetica, Arial, sans-serif;
                     color: #2d3748;
-                    margin: 0;
-                    padding: 0;
-                    line-height: 1.5;
-                    background-color: #ffffff;
+                    font-size: 10pt;
+                    line-height: 1.4;
+                }}
+
+                /* Footer styles for xhtml2pdf system tags */
+                #footer-content {{
+                    font-family: Helvetica, Arial, sans-serif;
+                    font-size: 8pt;
+                    color: #718096;
+                    border-top: 1px solid #cbd5e0;
+                    padding-top: 5px;
                 }}
 
                 .banner {{
-                    margin: -18mm -15mm 25px -15mm;
-                    padding: 25px 15mm 20px 15mm;
+                    padding: 20px;
                     background-color: #2b3e50;
                     color: #ffffff;
-                    border-bottom: 4px solid #4a5568;
+                    margin-bottom: 20px;
                 }}
                 
-                .banner-table {{
-                    width: 100%;
-                    border-collapse: collapse;
-                }}
-                
-                .banner-table td {{
-                    vertical-align: middle;
-                    padding: 0;
-                    border: none;
-                }}
-                
-                .title-area h1 {{
-                    font-size: 19pt;
+                .banner h1 {{
+                    font-size: 20pt;
                     font-weight: bold;
                     margin: 0;
-                    letter-spacing: 1px;
                     text-transform: uppercase;
                 }}
                 
-                .title-area subtitle {{
+                .banner .subtitle {{
                     font-size: 10pt;
                     color: #cbd5e0;
-                    display: block;
-                    margin-top: 4px;
-                    font-style: italic;
+                    margin-top: 5px;
                 }}
-                
-                .logo-area {{ text-align: right; }}
-                .logo-image {{ max-height: 45px; max-width: 180px; object-fit: contain; }}
-                .logo-text {{ font-size: 14pt; font-weight: bold; color: #cbd5e0; letter-spacing: 1px; }}
 
-                .meta-container {{
+                .meta-table {{
                     width: 100%;
-                    margin-bottom: 25px;
-                    border-collapse: collapse;
+                    margin-bottom: 20px;
                 }}
                 
-                .meta-container td {{
-                    padding: 6px 0;
-                    font-size: 9.5pt;
-                    border: none;
+                .meta-table td {{
+                    padding: 5px 0;
+                    font-size: 10pt;
                 }}
                 
                 .meta-label {{
                     font-weight: bold;
                     color: #4a5568;
                     width: 20%;
-                    text-transform: uppercase;
-                    font-size: 8.5pt;
-                    letter-spacing: 0.5px;
                 }}
                 
                 .meta-value {{ color: #2d3748; width: 30%; }}
 
+                .badge {{
+                    padding: 3px 6px;
+                    font-size: 9pt;
+                    font-weight: bold;
+                    text-transform: uppercase;
+                }}
+
                 .summary-card {{
                     background-color: #f8fafc;
-                    border-left: 5px solid #2b3e50;
-                    padding: 15px 20px;
-                    margin-bottom: 30px;
+                    border-left: 4px solid #2b3e50;
+                    padding: 15px;
+                    margin-bottom: 25px;
                 }}
                 
                 .summary-card h3 {{
-                    margin: 0 0 8px 0;
+                    margin: 0 0 5px 0;
                     color: #2b3e50;
                     font-size: 11pt;
                     text-transform: uppercase;
                 }}
                 
-                .summary-text {{ font-size: 10.5pt; color: #4a5568; }}
-                .summary-score-highlight {{ font-size: 16pt; color: #1a202c; font-weight: bold; margin-left: 5px; }}
+                .summary-score-highlight {{ font-size: 14pt; color: #1a202c; font-weight: bold; }}
 
                 h2 {{
                     color: #2b3e50;
                     font-size: 12pt;
                     font-weight: bold;
                     text-transform: uppercase;
-                    letter-spacing: 0.5px;
-                    border-bottom: 2px solid #e2e8f0;
-                    padding-bottom: 6px;
-                    margin-top: 25px;
+                    border-bottom: 1px solid #e2e8f0;
+                    padding-bottom: 5px;
+                    margin-top: 20px;
                     margin-bottom: 10px;
                 }}
 
                 .folder-section {{
-                    margin-bottom: 35px;
-                    page-break-inside: auto;
+                    margin-bottom: 20px;
                 }}
                 
                 .folder-meta {{
                     font-size: 10pt;
-                    margin-bottom: 8px;
+                    margin-bottom: 10px;
                     color: #4a5568;
                 }}
 
                 table.results-table {{
                     width: 100%;
-                    border-collapse: collapse;
-                    margin-bottom: 15px;
-                    page-break-inside: auto;
                 }}
-                
-                table.results-table tr {{ page-break-inside: avoid; }}
                 
                 table.results-table th {{
                     background-color: #f1f5f9;
                     color: #4a5568;
                     font-weight: bold;
                     text-align: left;
-                    padding: 9px 12px;
-                    font-size: 8.5pt;
-                    text-transform: uppercase;
-                    border-top: 1px solid #cbd5e0;
+                    padding: 8px;
+                    font-size: 9pt;
                     border-bottom: 2px solid #cbd5e0;
                 }}
                 
                 table.results-table td {{
-                    padding: 8px 12px;
+                    padding: 7px 8px;
                     font-size: 9.5pt;
                     border-bottom: 1px solid #e2e8f0;
                 }}
                 
-                table.results-table tr:nth-child(even) {{ background-color: #f8fafc; }}
-                
-                .text-right {{ text-align: right !important; }}
-                .text-center {{ text-align: center !important; }}
-                .font-numeric {{ font-variant-numeric: tabular-nums; }}
+                .text-right {{ text-align: right; }}
+                .text-center {{ text-align: center; }}
                 
                 .highlighted-cell {{
                     font-weight: bold;
                     color: #2b3e50;
                     background-color: #f1f5f9;
-                    width: 16%;
                 }}
 
+                .page-break {{ page-break-after: always; }}
+
                 /* General Directory Summary Styling */
-                .global-summary-section {{
-                    margin-top: 40px;
-                    page-break-inside: avoid;
-                }}
-                
                 table.summary-matrix {{
                     width: 100%;
-                    border-collapse: collapse;
-                    margin-top: 10px;
                 }}
                 
                 table.summary-matrix th {{
                     background-color: #2b3e50;
                     color: #ffffff;
                     font-weight: bold;
-                    padding: 10px 12px;
-                    font-size: 9pt;
+                    padding: 8px;
+                    font-size: 10pt;
                     text-transform: uppercase;
-                    border: 1px solid #2b3e50;
                 }}
                 
                 table.summary-matrix td {{
-                    padding: 10px 12px;
+                    padding: 8px;
                     font-size: 10pt;
                     border: 1px solid #e2e8f0;
                 }}
-
-                .badge {{
-                    padding: 4px 8px;
-                    border-radius: 4px;
-                    font-size: 8.5pt;
-                    font-weight: bold;
-                    text-transform: uppercase;
-                    display: inline-block;
-                }}
-                .badge-quiet {{ background-color: #def7ec; color: #03543f; }}
-                .badge-warning {{ background-color: #fde8e8; color: #9b1c1c; }}
-                .badge-critical {{ background-color: #fde8e8; color: #9b1c1c; }}
             </style>
         </head>
         <body>
             
-            <div class="banner">
-                <table class="banner-table">
+            <div id="footer-content">
+                <table style="width: 100%;">
                     <tr>
-                        <td class="title-area">
-                            <h1>Multi-Category Acoustic Certification</h1>
-                            <subtitle>Comprehensive Psychoacoustic Quality Assessment</subtitle>
-                        </td>
-                        <td class="logo-area">
-                            {logo_img_tag}
-                        </td>
+                        <td style="text-align: left;">MULTI-CATEGORY QUALITY CERTIFICATION | METHODOLOGY: PA MODEL</td>
+                        <td style="text-align: right;">Page <pdf:pagenumber /></td>
                     </tr>
                 </table>
             </div>
 
-            <table class="meta-container">
+            <div class="banner">
+                <h1>Multi-Category Acoustic Certification</h1>
+                <div class="subtitle">Comprehensive Psychoacoustic Quality Assessment</div>
+            </div>
+
+            <table class="meta-table">
                 <tr>
                     <td class="meta-label">Execution Date:</td>
                     <td class="meta-value">{datetime.now().strftime('%B %d, %Y')}</td>
@@ -335,7 +277,7 @@ def generate_acoustic_report(all_folders_data, global_average, base_resources_di
                     <td class="meta-label">Total Categories:</td>
                     <td class="meta-value">{len(all_folders_data)} directories</td>
                     <td class="meta-label">Global Status:</td>
-                    <td class="meta-value"><span class="badge {badge_class}">{interpretation}</span></td>
+                    <td class="meta-value"><span class="badge" style="{badge_style}">{interpretation}</span></td>
                 </tr>
             </table>
 
@@ -346,6 +288,8 @@ def generate_acoustic_report(all_folders_data, global_average, base_resources_di
                     <span class="summary-score-highlight">{global_average:.2f}</span>
                 </div>
             </div>
+
+            <div class="page-break"></div>
 
             {folder_sections_html}
 
@@ -363,8 +307,8 @@ def generate_acoustic_report(all_folders_data, global_average, base_resources_di
                         {general_summary_rows_html}
                         <tr style="background-color: #f1f5f9; font-weight: bold;">
                             <td>GLOBAL COMPREHENSIVE AVERAGE</td>
-                            <td class="text-center">—</td>
-                            <td class="text-right font-numeric" style="color: #2b3e50; font-size: 11pt;">{global_average:.2f}</td>
+                            <td class="text-center">&mdash;</td>
+                            <td class="text-right" style="color: #2b3e50; font-size: 11pt;">{global_average:.2f}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -374,12 +318,18 @@ def generate_acoustic_report(all_folders_data, global_average, base_resources_di
         </html>
         """
 
-        # Generate output PDF filename
+        # Generate output PDF safely
+        os.makedirs(output_dir, exist_ok=True)
         pdf_filename = f"global_acoustic_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
         output_pdf_path = os.path.join(output_dir, pdf_filename)
         
-        HTML(string=html_content).write_pdf(output_pdf_path)
-        logger.info(f"Successfully exported multi-folder corporate PDF report to: {output_pdf_path}")
+        with open(output_pdf_path, "wb") as pdf_file:
+            pisa_status = pisa.CreatePDF(html_content, dest=pdf_file)
+            
+        if pisa_status.err:
+            logger.error("Error occurred during PDF rendering inside xhtml2pdf engine.")
+        else:
+            logger.info(f"Successfully exported multi-folder native PDF report to: {output_pdf_path}")
         
     except Exception as e:
-        logger.error(f"Critical error whilst creating multi-folder styled report from module: {e}", exc_info=True)
+        logger.error(f"Critical error whilst creating multi-folder report: {e}", exc_info=True)

@@ -4,6 +4,7 @@ import logging.config
 import os
 import sys
 import yaml
+import warnings
 
 # =============================================================================
 # FORMATTER COULEUR COMPATIBLE YAML
@@ -59,3 +60,6 @@ if os.path.exists(__logger_config_file) and os.path.isfile(__logger_config_file)
         raise
 else:
     __logger.warning(f"no configuration file {__logger_config_file} found, using default setting")
+    
+# Mute repetitive MOSQITO resampling warnings in the terminal
+warnings.filterwarnings("ignore", category=UserWarning, module="mosqito")

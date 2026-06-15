@@ -60,21 +60,21 @@ To understand **why** a sound gets a specific score (e.g., a score of 17.71), yo
 
 ## 3. Installation and Configuration
 
-The analysis relies on the open-source **MOSQITO** framework (Modular Sound Quality Integrated Toolbox), developed to standardize industrial sound quality calculations.
-
-### Prerequisites
-Ensure you have Python 3.8+ installed.
-
-### Installing Dependencies
-Install the required packages via your terminal:
+### Environment Setup
+To setup the project structure, dependencies, and tools declared inside `pyproject.toml`, execute the following command in editable mode from the root directory:
 
 ```bash
-pip install numpy scipy mosqito librosa
+pip install -e .
 ```
 
 ---
+## 4. Generated Output Artifacts
 
-## 4. Technical Limitations & Best Practices
+Once the code analysis completes scanning the directories, a comprehensive, premium multi-folder performance certification file will be compiled and saved inside the dedicated output path:
+
+    Target Output Directory: data/analysis/
+
+## 5. Technical Limitations & Best Practices
 
 To guarantee the scientific validity of your measurements, make sure to respect the following constraints:
 

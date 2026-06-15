@@ -8,7 +8,13 @@
             "program": "${workspaceFolder}/src/main.py",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
-            "python": "${command:python.interpreterPath}"
+            "python": "${command:python.interpreterPath}",
+            "args": [
+                "--input",
+                "${workspaceFolder}/data/input",
+                "--output",
+                "${workspaceFolder}/data/output",
+            ]
         }
     ]
 }

@@ -3,7 +3,7 @@ name = "acoustic-complexity-certification"
 version = "0.1.0"
 description = "Psychoacoustic Annoyance validation and sound profile certification using MOSQITO"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = [
     "numpy==2.4.6",
     "scipy==1.17.1",
@@ -11,7 +11,7 @@ dependencies = [
     "matplotlib==3.10.9",
     "python-dotenv==0.20.0",
     "pyyaml>=6.0.1",
-    "weasyprint>=61.0"
+    "xhtml2pdf==0.2.16",
 ]
 
 [tool.black]
