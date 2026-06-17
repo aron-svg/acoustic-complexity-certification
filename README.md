@@ -64,7 +64,8 @@ To understand **why** a sound gets a specific score (e.g., a score of 17.71), yo
 To setup the project structure, dependencies, and tools declared inside `pyproject.toml`, execute the following command in editable mode from the root directory:
 
 ```bash
-pip install -e .
+uv sync 
+.venv/Scripts/activate
 ```
 
 ---
