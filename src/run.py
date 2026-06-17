@@ -1,17 +1,19 @@
+import glob
+import multiprocessing
 import numpy as np
 import os
 import scipy.io.wavfile as wav
 from mosqito.sq_metrics import loudness_zwtv, sharpness_din_tv, roughness_dw
 from logger_init import logger
 from pdf_generator import generate_acoustic_report
+from pathlib import Path
 
-def analyze_audio_file(current_folder_path, filename, folder_name, folder_files_data, folder_pa_scores, all_global_pa_scores):
-    file_path = os.path.join(current_folder_path, filename)
-    logger.info(f"Processing ({folder_name}): {filename} ...")
+def analyze_audio_file(wav_path, folder_name, folder_files_data, folder_pa_scores, all_global_pa_scores):
     
     try:
+        filename = os.path.basename(wav_path)
         # 1. Load and preparation
-        fs, signal = wav.read(file_path)
+        fs, signal = wav.read(wav_path)
         if signal.ndim == 2:
             signal = signal.mean(axis=1)
         signal = signal.astype(np.float32) / np.iinfo(np.int16).max
@@ -47,66 +49,51 @@ def analyze_audio_file(current_folder_path, filename, folder_name, folder_files_
         logger.error(f"Error while processing file {filename} in folder {folder_name}: {e}", exc_info=True)
         
 
-def execute_analysis(BASE_RESOURCES_DIR):
+def process_wav_file(wav_path):
+    folder_name = os.path.basename(os.path.dirname(wav_path))
+    result = analyze_audio_file(
+        wav_path=wav_path,
+        folder_name=folder_name,
+        folder_files_data=[],
+        folder_pa_scores=[],
+        all_global_pa_scores=[]
+    )
+    if result is None:
+        return None
+    folder_files_data, folder_pa_scores = result
+    return folder_name, folder_files_data, folder_pa_scores
+
+
+def execute_analysis(BASE_RESOURCES_DIR, OUTPUT_PDF_DIR):
     
-    # Retrieve all sub-directories inside data/ressources/
-    all_folders = [f for f in os.listdir(BASE_RESOURCES_DIR) if os.path.isdir(os.path.join(BASE_RESOURCES_DIR, f))]
-    all_folders.sort()  # Sort alphanumerically (Category A, B, C...)
+    folder_path = Path(BASE_RESOURCES_DIR)
 
-    if not all_folders:
-        logger.warning(f"No directories found inside '{BASE_RESOURCES_DIR}'. Checking if base folder itself contains audio...")
-        # Fallback to current directory as a single folder name if no subfolders exist
-        all_folders = ["."]
+    list_of_wav_files = glob.glob(BASE_RESOURCES_DIR + "/**/*.wav", recursive=True)
 
-    logger.info(f"Multi-directory scan started. Found {len(all_folders)} target folder(s) inside '{BASE_RESOURCES_DIR}'.")
-    print("=" * 60)
+    max_cpu = multiprocessing.cpu_count()
+    logger.info(f"Total .wav files input found in '{BASE_RESOURCES_DIR}': {len(list_of_wav_files)}")
+    logger.info(f"CPU cores available: {max_cpu}")
 
     # Master structure to store data for all folders
     # Format: { 'A': { 'files': [...], 'average_pa': 14.5 }, 'B': ... }
     all_folders_data = {}
     all_global_pa_scores = []
 
-    # =============================================================================
-    # MASTER DIRECTORY LOOP
-    # =============================================================================
-    for folder_name in all_folders:
-        current_folder_path = os.path.join(BASE_RESOURCES_DIR, folder_name) if folder_name != "." else BASE_RESOURCES_DIR
-        
-        # List wav files inside this specific sub-folder
-        audio_files = [f for f in os.listdir(current_folder_path) if f.lower().endswith('.wav')]
-        audio_files.sort()
-        
-        if not audio_files:
-            logger.warning(f"Skipping folder '{folder_name}': No .wav file specimens found.")
+    with multiprocessing.Pool(processes=max_cpu) as pool:
+        results = pool.map(process_wav_file, list_of_wav_files)
+
+    for result in results:
+        if result is None:
             continue
-            
-        logger.info(f">>> ENTERING FOLDER [Category {folder_name}] — Found {len(audio_files)} files.")
-        print("-" * 50)
-        
-        folder_files_data = []
-        folder_pa_scores = []
-        
-        # --- Inside loop file by file analysis ---
-        for filename in audio_files:
-            folder_files_data, folder_pa_scores = analyze_audio_file(
-                current_folder_path=current_folder_path,
-                filename=filename,
-                folder_name=folder_name,
-                folder_files_data=folder_files_data,
-                folder_pa_scores=folder_pa_scores,
-                all_global_pa_scores=all_global_pa_scores
-            )
-        # Compute this directory's performance average
+        folder_name, folder_files_data, folder_pa_scores = result
+        all_global_pa_scores.extend(folder_pa_scores)
         if folder_pa_scores:
             folder_avg_pa = np.mean(folder_pa_scores)
             logger.info(f"<<< FINISHED FOLDER [Category {folder_name}] — Mean Annoyance Score: {folder_avg_pa:.2f}")
-            
-            # Save metrics under the master dictionary database structure
             all_folders_data[folder_name] = {
                 "files": folder_files_data,
                 "average_pa": folder_avg_pa
             }
-        print("=" * 60)
 
     # =============================================================================
     # COMPILE CROSS-CATEGORY VALIDATION AND EXPORT REPORT
