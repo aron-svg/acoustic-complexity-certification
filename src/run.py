@@ -5,7 +5,7 @@ import os
 import scipy.io.wavfile as wav
 from mosqito.sq_metrics import loudness_zwtv, sharpness_din_tv, roughness_dw
 from logger_init import logger
-from pdf_generator import generate_acoustic_report
+from csv_generator import generate_acoustic_csv
 from pathlib import Path
 
 def analyze_audio_file(wav_path, folder_name, folder_files_data, folder_pa_scores, all_global_pa_scores):
@@ -107,8 +107,7 @@ def execute_analysis(BASE_RESOURCES_DIR, OUTPUT_PDF_DIR):
         logger.info(f"GLOBAL COMPREHENSIVE AVERAGE SCORE (PA) : {global_comprehensive_average:.2f}")
         print("-" * 60)
         
-        # Execute the layout mapping and hand off data to PDF generator module
-        generate_acoustic_report(
+        generate_acoustic_csv(
             all_folders_data=all_folders_data,
             global_average=global_comprehensive_average,
             base_resources_dir=BASE_RESOURCES_DIR,
